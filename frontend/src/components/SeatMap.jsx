@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getSeatsByBus, checkSeatAvailability, joinWaitlist } from "../services/api";
 import toast from "react-hot-toast";
+import "../styles/seat-map.css";
 
 const SeatMap = ({ busID, studentID }) => {
   const [seats, setSeats] = useState([]);
@@ -9,6 +10,8 @@ const SeatMap = ({ busID, studentID }) => {
   const [availabilityInfo, setAvailabilityInfo] = useState(null);
   const [showWaitlistForm, setShowWaitlistForm] = useState(false);
   const [waitlistLoading, setWaitlistLoading] = useState(false);
+  const [studentHistory, setStudentHistory] = useState([]);
+  const [activeReservation, setActiveReservation] = useState(null);
   const navigate = useNavigate();
 
   // Fetch seats and availability info from backend when component loads
@@ -16,8 +19,48 @@ const SeatMap = ({ busID, studentID }) => {
     if (busID) {
       loadSeats();
       loadAvailabilityInfo();
+      loadStudentHistory();
+      checkActiveReservations();
     }
   }, [busID]);
+
+  const checkActiveReservations = async () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlStudentID = urlParams.get('studentID') || studentID || 'STUDENT001';
+      
+      const response = await fetch(`http://localhost:5000/api/reservations/student/${urlStudentID}`);
+      const data = await response.json();
+      
+      // Check for active reservations (Booked or Reserved status)
+      const activeReservations = data.reservations?.filter(r => 
+        r.status === "Booked" || r.status === "Reserved"
+      ) || [];
+      
+      if (activeReservations.length > 0) {
+        setActiveReservation(activeReservations[0]);
+      }
+    } catch (error) {
+      console.error("Error checking active reservations:", error);
+    }
+  };
+
+  const loadStudentHistory = async () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlStudentID = urlParams.get('studentID') || studentID || 'STUDENT001';
+      const studentType = urlParams.get('type') || 'Regular';
+      
+      if (studentType === 'Regular') {
+        const response = await fetch(`http://localhost:5000/api/expired-reservations/find/${urlStudentID}`);
+        const data = await response.json();
+        setStudentHistory(data.reservations || []);
+      }
+    } catch (error) {
+      console.error("Failed to load student history:", error);
+      setStudentHistory([]);
+    }
+  };
 
   const loadSeats = async () => {
     try {
@@ -41,20 +84,85 @@ const SeatMap = ({ busID, studentID }) => {
     }
   };
 
+  // Check if current student can renew a pending seat
+  const canRenewSeat = (seat) => {
+    if (seat.status !== "Pending") return false;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const studentType = urlParams.get('type') || 'Regular';
+    
+    if (studentType !== 'Regular') return false;
+    
+    // Check if this student had this seat before
+    return studentHistory.some(reservation => 
+      reservation.busID === busID && 
+      reservation.seatNumber === seat.seatNumber && 
+      reservation.status === "Completed" &&
+      reservation.reservationType === "Regular"
+    );
+  };
+
   // Handle seat click - make reservation and redirect to payment
   const handleClick = async (seat) => {
-    if (seat.status !== "Available") {
-      toast.error(`Seat ${seat.seatNumber} is not available`);
-      return;
-    }
-
     // Get student type and studentID from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const studentType = urlParams.get('type') || 'Regular';
     const urlStudentID = urlParams.get('studentID') || studentID || 'STUDENT001'; // Use URL param, prop, or default
 
-    // Navigate to Fee Summary page instead of directly creating reservation
-    toast.success(`Seat ${seat.seatNumber} selected!`);
+    // Check if student already has an active reservation
+    try {
+      const response = await fetch(`http://localhost:5000/api/reservations/student/${urlStudentID}`);
+      const data = await response.json();
+      
+      // Check for active reservations (Booked or Reserved status)
+      const activeReservations = data.reservations?.filter(r => 
+        r.status === "Booked" || r.status === "Reserved"
+      ) || [];
+      
+      if (activeReservations.length > 0) {
+        const activeRes = activeReservations[0];
+        toast.error(
+          `You already have an active reservation! Bus ${activeRes.busID}, Seat ${activeRes.seatNumber}. Only one active reservation per student is allowed.`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error("Error checking existing reservations:", error);
+      // Continue with booking if API call fails (don't block user)
+    }
+
+    if (seat.status === "Available") {
+      // Available seat - proceed normally
+      toast.success(`Seat ${seat.seatNumber} selected!`);
+    } else if (seat.status === "Pending" && studentType === "Regular") {
+      // Check if this student can renew this pending seat
+      try {
+        const response = await fetch(`http://localhost:5000/api/expired-reservations/find/${urlStudentID}`);
+        const data = await response.json();
+        
+        // Check if this student had this seat before
+        const hadThisSeat = data.reservations.some(reservation => 
+          reservation.busID === busID && 
+          reservation.seatNumber === seat.seatNumber && 
+          reservation.status === "Completed" &&
+          reservation.reservationType === "Regular"
+        );
+        
+        if (hadThisSeat) {
+          toast.success(`Renewing your previous seat ${seat.seatNumber}!`);
+        } else {
+          toast.error(`Seat ${seat.seatNumber} is pending renewal by another student`);
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking student history:", error);
+        toast.error(`Seat ${seat.seatNumber} is not available`);
+        return;
+      }
+    } else {
+      toast.error(`Seat ${seat.seatNumber} is not available`);
+      return;
+    }
     
     // Redirect to fee summary page with seat details
     navigate("/fee-summary", {
@@ -62,7 +170,8 @@ const SeatMap = ({ busID, studentID }) => {
         busID: busID,
         seatNumber: seat.seatNumber,
         studentType: studentType,
-        studentID: urlStudentID
+        studentID: urlStudentID,
+        isRenewal: seat.status === "Pending"
       }
     });
   };
@@ -114,6 +223,44 @@ const SeatMap = ({ busID, studentID }) => {
 
   return (
     <div style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
+      {/* Active Reservation Warning */}
+      {activeReservation && (
+        <div style={{
+          background: "#fff3cd",
+          border: "1.5px solid #ffeaa7",
+          boxShadow: "0 2px 12px 0 rgba(255,193,7,0.15)",
+          padding: 20,
+          borderRadius: 12,
+          marginBottom: 20,
+          textAlign: "center"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 24, marginRight: 8 }} role="img" aria-label="warning">⚠️</span>
+            <h3 style={{ margin: 0, color: "#856404", fontSize: 18, fontWeight: 700 }}>
+              Active Reservation Found
+            </h3>
+          </div>
+          <p style={{ margin: "0 0 12px 0", color: "#856404", fontSize: 14, lineHeight: 1.5 }}>
+            You already have an active reservation:
+          </p>
+          <div style={{
+            background: "#fff",
+            border: "1px solid #ffeaa7",
+            borderRadius: 8,
+            padding: 12,
+            fontSize: 14,
+            color: "#495057"
+          }}>
+            <strong>Bus {activeReservation.busID}</strong> • Seat <strong>{activeReservation.seatNumber}</strong><br/>
+            Status: <span style={{ color: "#28a745", fontWeight: 600 }}>{activeReservation.status}</span><br/>
+            <small>Reservation ID: {activeReservation.reservationID}</small>
+          </div>
+          <p style={{ margin: "12px 0 0 0", color: "#856404", fontSize: 13, fontStyle: "italic" }}>
+            Only one active reservation per student is allowed. You cannot book additional seats.
+          </p>
+        </div>
+      )}
+
       {/* Availability Info */}
       {availabilityInfo && (
         <div style={{
@@ -259,7 +406,7 @@ const SeatMap = ({ busID, studentID }) => {
               color: "#fff",
               fontWeight: 700,
               fontSize: 18,
-              cursor: seat.status === "Available" ? "pointer" : "not-allowed",
+              cursor: seat.status === "Available" || canRenewSeat(seat) ? "pointer" : "not-allowed",
               boxShadow: seat.status === "Available"
                 ? "0 2px 8px 0 rgba(67,160,71,0.13)"
                 : seat.status === "Booked"
@@ -272,12 +419,18 @@ const SeatMap = ({ busID, studentID }) => {
               if (seat.status === "Available") {
                 e.target.style.transform = "scale(1.08)";
                 e.target.style.boxShadow = "0 4px 16px 0 rgba(67,160,71,0.18)";
+              } else if (canRenewSeat(seat)) {
+                e.target.style.transform = "scale(1.08)";
+                e.target.style.boxShadow = "0 4px 16px 0 rgba(255,179,0,0.25)";
               }
             }}
             onMouseLeave={e => {
               if (seat.status === "Available") {
                 e.target.style.transform = "scale(1)";
                 e.target.style.boxShadow = "0 2px 8px 0 rgba(67,160,71,0.13)";
+              } else if (canRenewSeat(seat)) {
+                e.target.style.transform = "scale(1)";
+                e.target.style.boxShadow = "0 2px 8px 0 rgba(255,179,0,0.13)";
               }
             }}
           >

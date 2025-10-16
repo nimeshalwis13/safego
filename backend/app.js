@@ -10,6 +10,7 @@ const routeRoutes = require("./Routes/RouteRoutes");
 const busRoutes = require("./Routes/BusRoutes");
 const expiredReservationRoutes = require("./Routes/ExpiredReservationRoutes");
 const waitlistRoutes = require("./Routes/WaitlistRoutes");
+const reportRoutes = require("./Routes/ReportRoutes");
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/expired-reservations", expiredReservationRoutes);
+app.use("/api/reports", reportRoutes);
 app.use("/api/waitlist", waitlistRoutes);
 
 // Default route
@@ -203,13 +205,79 @@ cron.schedule('0 9 * * *', async () => {
     }
 });
 
+// Schedule pending seat expiry check every day at 2 AM
+cron.schedule('0 2 * * *', async () => {
+    try {
+        console.log('Running pending seat expiry check...');
+        
+        const currentDate = new Date();
+        let expiredSeats = 0;
+        
+        // Find all pending seats
+        const pendingSeats = await Seat.find({ status: "Pending" });
+        
+        for (const seat of pendingSeats) {
+            // Find the last completed reservation for this seat by the current reserved student
+            const lastReservation = await Reservation.findOne({
+                busID: seat.busID,
+                seatNumber: seat.seatNumber,
+                studentID: seat.reservedBy,
+                status: "Completed",
+                reservationType: "Regular"
+            }).sort({ endDate: -1 });
+            
+            if (lastReservation) {
+                // Calculate days since expiry
+                const daysSinceExpiry = Math.floor((currentDate - new Date(lastReservation.endDate)) / (1000 * 60 * 60 * 24));
+                
+                // Determine grace period based on last subscription type
+                let gracePeriod = 7; // Default for monthly (7 days)
+                if (lastReservation.seasonType === "SixMonth") {
+                    gracePeriod = 12; // 6-month plan gets 12 days
+                }
+                
+                // If grace period exceeded, release the seat
+                if (daysSinceExpiry > gracePeriod) {
+                    seat.status = "Available";
+                    seat.reservedBy = undefined;
+                    await seat.save();
+                    expiredSeats++;
+                    
+                    console.log(`Released pending seat ${seat.seatNumber} on bus ${seat.busID} - Grace period (${gracePeriod} days) expired for ${lastReservation.seasonType} plan student ${seat.reservedBy}`);
+                }
+            } else {
+                // If no previous reservation found (shouldn't happen), release the seat
+                seat.status = "Available";
+                seat.reservedBy = undefined;
+                await seat.save();
+                expiredSeats++;
+                console.log(`Released orphaned pending seat ${seat.seatNumber} on bus ${seat.busID} - No previous reservation found`);
+            }
+        }
+        
+        console.log(`Pending seat expiry check completed: ${expiredSeats} seats released to Available`);
+        
+        // Check for newly available seats and notify waitlist
+        if (expiredSeats > 0) {
+            console.log('Checking waitlists for newly released seats...');
+            await checkAndNotifyWaitlists();
+        }
+        
+    } catch (error) {
+        console.error('Error during pending seat expiry check:', error.message);
+    }
+});
+
 // Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log('Automatic seat release system activated:');
-    console.log('- Daily cleanup at midnight (00:00)');
-    console.log('- Daily expiration reminders at 9:00 AM');
-    console.log('- Daily waitlist cleanup at 1:00 AM');
+    console.log('Automatic seat management system activated:');
+    console.log('- Daily cleanup at midnight (00:00) - Process expired reservations');
+    console.log('- Daily waitlist cleanup at 1:00 AM - Clean expired waitlist entries');
+    console.log('- Daily pending seat expiry at 2:00 AM - Release unreserved pending seats');
+    console.log('  • Monthly plans: 7-day grace period');
+    console.log('  • 6-Month plans: 12-day grace period');
+    console.log('- Daily expiration reminders at 9:00 AM - Log expiring reservations');
     console.log('- Automatic waitlist notifications when seats become available');
 });

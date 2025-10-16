@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getStudentWaitlist, cancelWaitlistEntry } from "../services/api";
 import toast from "react-hot-toast";
+import "../styles/waitlist.css";
 
 const StudentWaitlistPage = () => {
   const [searchParams] = useSearchParams();
@@ -180,9 +181,6 @@ const StudentWaitlistPage = () => {
                     </p>
                   </div>
                   <div>
-                    <p style={{ margin: "0 0 5px 0", fontSize: "14px" }}>
-                      <strong>Season:</strong> {entry.seasonType}
-                    </p>
                     <p style={{ margin: "0 0 5px 0", fontSize: "14px" }}>
                       <strong>Joined:</strong> {formatDate(entry.createdAt)}
                     </p>

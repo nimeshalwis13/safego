@@ -16,7 +16,7 @@ start "SafeGo Frontend" cmd /k "npm run dev"
 
 echo.
 echo Starting Admin Dashboard on port 3001...
-cd /d "%~dp0admin-dashboard\admin-dashboard"
+cd /d "%~dp0admin-dashboard"
 start "SafeGo Admin Dashboard" cmd /k "npm run dev"
 
 echo.

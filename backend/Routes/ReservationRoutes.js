@@ -42,8 +42,54 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ message: "Seat not found" });
     }
     
-    if (seat.status !== "Available") {
+    // Check seat availability
+    if (seat.status === "Available") {
+      // Seat is available for anyone
+    } else if (seat.status === "Pending" && reservationType === "Regular") {
+      // Check if this student can renew their previous seat
+      const lastReservation = await Reservation.findOne({
+        busID,
+        seatNumber: parseInt(seatNumber),
+        studentID,
+        status: "Completed",
+        reservationType: "Regular"
+      }).sort({ endDate: -1 });
+      
+      if (!lastReservation) {
+        return res.status(400).json({ 
+          message: "This seat is pending renewal by another student" 
+        });
+      }
+      
+      // Check if the renewal is within grace period (e.g., 30 days)
+      const daysSinceExpiry = Math.floor((new Date() - new Date(lastReservation.endDate)) / (1000 * 60 * 60 * 24));
+      if (daysSinceExpiry > 30) {
+        return res.status(400).json({ 
+          message: "Renewal period has expired. This seat is no longer available for renewal." 
+        });
+      }
+    } else {
       return res.status(400).json({ message: "Seat not available" });
+    }
+
+    // Check if student already has an active reservation (prevent multiple bookings)
+    const existingReservation = await Reservation.findOne({
+      studentID: studentID,
+      status: { $in: ["Booked", "Reserved"] }
+    });
+
+    if (existingReservation) {
+      return res.status(400).json({ 
+        message: `Student ${studentID} already has an active reservation (${existingReservation.reservationID}) for Bus ${existingReservation.busID}, Seat ${existingReservation.seatNumber}. Only one active reservation per student is allowed.`,
+        existingReservation: {
+          reservationID: existingReservation.reservationID,
+          busID: existingReservation.busID,
+          seatNumber: existingReservation.seatNumber,
+          status: existingReservation.status,
+          startDate: existingReservation.startDate,
+          endDate: existingReservation.endDate
+        }
+      });
     }
 
     // Get or create student info
@@ -82,12 +128,12 @@ router.post("/", async (req, res) => {
         paymentStatus: "Success",
       });
 
-      if (seasonType === "Annual") {
-        feeBreakdown.annualFee = 12000; // Annual fee
-        feeAmount = 12000;
-      } else {
-        feeBreakdown.monthlyFee = 1200; // Monthly fee
-        feeAmount = 1200;
+      if (seasonType === "SixMonth") { // Updated from "Annual" to "SixMonth"
+        feeBreakdown.annualFee = 18000; // Updated 6-month fee (no registration fee)
+        feeAmount = 18000;
+      } else if (seasonType === "Monthly") {
+        feeBreakdown.monthlyFee = 4000; // Updated monthly fee
+        feeAmount = 4000;
 
         if (!hasExistingReservation) {
           feeBreakdown.registrationFee = 500; // Registration fee for new students
@@ -118,11 +164,11 @@ router.post("/", async (req, res) => {
         finalEndDate = new Date(startDateObj);
         finalEndDate.setDate(finalEndDate.getDate() + 30);
         finalDaysBooked = 30;
-      } else if (seasonType === "Annual") {
-        // Annual plan: 365 days from start date
+      } else if (seasonType === "SixMonth") {
+        // 6-month plan: 180 days from start date
         finalEndDate = new Date(startDateObj);
-        finalEndDate.setDate(finalEndDate.getDate() + 365);
-        finalDaysBooked = 365;
+        finalEndDate.setDate(finalEndDate.getDate() + 180);
+        finalDaysBooked = 180;
       }
     }
 
@@ -144,7 +190,7 @@ router.post("/", async (req, res) => {
 
     // Reserve the seat temporarily (update the separate Seat document)
     seat.status = "Pending"; // Use "Pending" instead of "Reserved"
-    seat.reservedBy = student._id;
+    seat.reservedBy = student.studentID; // Use studentID string instead of ObjectId
     await seat.save();
 
     res.status(201).json(reservation);
@@ -180,8 +226,18 @@ router.put("/:id/payment", async (req, res) => {
     } else if (paymentStatus === "Failed") {
       reservation.status = "Cancelled";
       if (seat) {
-        seat.status = "Available";
-        seat.reservedBy = null;
+        // Check if this was a renewal attempt
+        const wasRenewal = await Reservation.findOne({
+          busID: reservation.busID,
+          seatNumber: reservation.seatNumber,
+          studentID: reservation.studentID,
+          status: "Completed",
+          reservationType: "Regular"
+        });
+        
+        // If it was a renewal, set back to Pending, otherwise set to Available
+        seat.status = wasRenewal ? "Pending" : "Available";
+        seat.reservedBy = wasRenewal ? reservation.studentID : null;
         await seat.save();
       }
     }

@@ -1,5 +1,6 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import "../styles/payment-success.css";
 
 // Same bus data as in SeatReservationPage
 const buses = [

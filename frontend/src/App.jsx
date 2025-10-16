@@ -10,7 +10,7 @@ import { Toaster } from "react-hot-toast";
 function App() {
   return (
     <Router>
-      <div style={{ fontFamily: "Arial", padding: "20px" }}>
+      <div style={{ fontFamily: "Arial" }}>
         <Routes>
           <Route path="/" element={<StudentLogin />} />
           <Route path="/seat-reservation" element={<SeatReservationPage />} />

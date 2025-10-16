@@ -88,7 +88,7 @@ const reservationSchema = new mongoose.Schema({
   },
   seasonType: {
     type: String,
-    enum: ["Monthly", "Annual"],
+    enum: ["Monthly", "SixMonth"],
     required: function() {
       return this.reservationType === "Regular";
     }
