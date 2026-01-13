@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { generateSeatsForBus } from "../services/api";
 import toast from "react-hot-toast";
+import "../styles/admin-dashboard.css";
 
 const SchoolAdminDashboard = () => {
   const [busID, setBusID] = useState("");

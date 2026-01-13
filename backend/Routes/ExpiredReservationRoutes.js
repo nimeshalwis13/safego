@@ -266,23 +266,72 @@ router.post("/admin/contact-student", async (req, res) => {
   try {
     const { studentID, busID, seatNumber, contactMethod, notes } = req.body;
     
-    // Log the contact attempt (in a real system, this might send SMS/email)
-    console.log(`Admin contacted student ${studentID} via ${contactMethod} for seat renewal - Bus ${busID}, Seat ${seatNumber}`);
-    if (notes) console.log(`Notes: ${notes}`);
+    // ⭐ FETCH ACTUAL STUDENT DETAILS FROM DATABASE
+    const Student = require("../Model/StudentModel");
+    const student = await Student.findOne({ studentID: studentID });
     
+    if (!student) {
+      return res.status(404).json({ 
+        success: false,
+        message: `Student ${studentID} not found in database` 
+      });
+    }
+    
+    // ⭐ FETCH RESERVATION DETAILS
+    const lastReservation = await Reservation.findOne({
+      studentID: studentID,
+      busID: busID,
+      seatNumber: seatNumber,
+      status: "Completed",
+      reservationType: "Regular"
+    }).sort({ endDate: -1 });
+    
+    if (!lastReservation) {
+      return res.status(404).json({
+        success: false,
+        message: `No completed reservation found for student ${studentID} on Bus ${busID}, Seat ${seatNumber}`
+      });
+    }
+    
+    // Calculate days since expiry
+    const daysExpired = Math.floor((new Date() - new Date(lastReservation.endDate)) / (1000 * 60 * 60 * 24));
+    
+    // Log the contact attempt (in a real system, this might send SMS/email)
+    console.log(`📞 Admin contacted student ${studentID} (${student.name}) via ${contactMethod} for seat renewal`);
+    console.log(`   Bus: ${busID}, Seat: ${seatNumber}, Expired: ${daysExpired} days ago`);
+    if (notes) console.log(`   Notes: ${notes}`);
+    
+    // ⭐ RETURN COMPLETE CONTACT INFORMATION
     res.json({
-      message: `Contact logged for student ${studentID}`,
+      success: true,
+      message: `Contact logged for student ${student.name}`,
       contactDetails: {
-        studentID,
-        busID,
-        seatNumber,
-        contactMethod,
+        studentID: student.studentID,
+        studentName: student.name,
+        phone: student.phone || "Not available",
+        email: student.email || "Not available",
+        parentName: student.parentName || "Not available",
+        parentPhone: student.parentPhone || "Not available",
+        emergencyContact: student.emergencyContact || "Not available",
+        busID: busID,
+        seatNumber: seatNumber,
+        contactMethod: contactMethod,
         timestamp: new Date(),
-        notes
+        notes: notes || "",
+        reservationInfo: {
+          seasonType: lastReservation.seasonType,
+          expiredDate: lastReservation.endDate,
+          daysExpired: daysExpired,
+          priority: daysExpired <= 7 ? "High" : daysExpired <= 14 ? "Medium" : "Low"
+        }
       }
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error contacting student:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
   }
 });
 

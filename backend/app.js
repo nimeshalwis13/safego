@@ -10,17 +10,31 @@ const routeRoutes = require("./Routes/RouteRoutes");
 const busRoutes = require("./Routes/BusRoutes");
 const expiredReservationRoutes = require("./Routes/ExpiredReservationRoutes");
 const waitlistRoutes = require("./Routes/WaitlistRoutes");
+const reportRoutes = require("./Routes/ReportRoutes");
+const studentRoutes = require("./Routes/StudentRoutes");
+const counterRoutes = require("./Routes/CounterRoutes");
 
 const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
+    credentials: true
+}));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || "mongodb+srv://nimeshalwis13_db_user:fXG5lTvOJDUgrUkm@safego.u8riemt.mongodb.net/schoolbus")
+if (!process.env.MONGODB_URI) {
+    console.error('❌ MONGODB_URI is not defined in environment variables!');
+    process.exit(1);
+}
+
+mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log("Connected to MongoDB"))
-.catch((err) => console.error("MongoDB connection error:", err));
+.catch((err) => {
+    console.error("MongoDB connection error:", err);
+    process.exit(1);
+});
 
 // Routes
 app.use("/api/seats", seatRoutes);
@@ -29,7 +43,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/expired-reservations", expiredReservationRoutes);
+app.use("/api/reports", reportRoutes);
 app.use("/api/waitlist", waitlistRoutes);
+app.use("/api/students", studentRoutes);
+app.use("/api/counter", counterRoutes);
 
 // Default route
 app.get("/", (req, res) => {
@@ -203,13 +220,82 @@ cron.schedule('0 9 * * *', async () => {
     }
 });
 
+// ⚠️ DISABLED: Automatic pending seat expiry check
+// Admin will manually manage seat renewals - Students can renew at any time
+// Schedule pending seat expiry check every day at 2 AM
+/*
+cron.schedule('0 2 * * *', async () => {
+    try {
+        console.log('Running pending seat expiry check...');
+        
+        const currentDate = new Date();
+        let expiredSeats = 0;
+        
+        // Find all pending seats
+        const pendingSeats = await Seat.find({ status: "Pending" });
+        
+        for (const seat of pendingSeats) {
+            // Find the last completed reservation for this seat by the current reserved student
+            const lastReservation = await Reservation.findOne({
+                busID: seat.busID,
+                seatNumber: seat.seatNumber,
+                studentID: seat.reservedBy,
+                status: "Completed",
+                reservationType: "Regular"
+            }).sort({ endDate: -1 });
+            
+            if (lastReservation) {
+                // Calculate days since expiry
+                const daysSinceExpiry = Math.floor((currentDate - new Date(lastReservation.endDate)) / (1000 * 60 * 60 * 24));
+                
+                // Determine grace period based on last subscription type
+                let gracePeriod = 7; // Default for monthly (7 days)
+                if (lastReservation.seasonType === "SixMonth") {
+                    gracePeriod = 12; // 6-month plan gets 12 days
+                }
+                
+                // If grace period exceeded, release the seat
+                if (daysSinceExpiry > gracePeriod) {
+                    seat.status = "Available";
+                    seat.reservedBy = undefined;
+                    await seat.save();
+                    expiredSeats++;
+                    
+                    console.log(`Released pending seat ${seat.seatNumber} on bus ${seat.busID} - Grace period (${gracePeriod} days) expired for ${lastReservation.seasonType} plan student ${seat.reservedBy}`);
+                }
+            } else {
+                // If no previous reservation found (shouldn't happen), release the seat
+                seat.status = "Available";
+                seat.reservedBy = undefined;
+                await seat.save();
+                expiredSeats++;
+                console.log(`Released orphaned pending seat ${seat.seatNumber} on bus ${seat.busID} - No previous reservation found`);
+            }
+        }
+        
+        console.log(`Pending seat expiry check completed: ${expiredSeats} seats released to Available`);
+        
+        // Check for newly available seats and notify waitlist
+        if (expiredSeats > 0) {
+            console.log('Checking waitlists for newly released seats...');
+            await checkAndNotifyWaitlists();
+        }
+        
+    } catch (error) {
+        console.error('Error during pending seat expiry check:', error.message);
+    }
+});
+*/
+
 // Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log('Automatic seat release system activated:');
-    console.log('- Daily cleanup at midnight (00:00)');
-    console.log('- Daily expiration reminders at 9:00 AM');
-    console.log('- Daily waitlist cleanup at 1:00 AM');
+    console.log('Automatic seat management system activated:');
+    console.log('- Daily cleanup at midnight (00:00) - Process expired reservations');
+    console.log('- Daily waitlist cleanup at 1:00 AM - Clean expired waitlist entries');
+    console.log('- Daily expiration reminders at 9:00 AM - Log expiring reservations');
     console.log('- Automatic waitlist notifications when seats become available');
+    console.log('⚠️  Pending seat auto-release DISABLED - Admin manages renewals manually');
+    console.log('   Students can renew their seats at any time, regardless of expiry date');
 });

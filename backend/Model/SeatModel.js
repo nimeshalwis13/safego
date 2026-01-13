@@ -9,9 +9,9 @@ const seatSchema = new mongoose.Schema({
     default: "Available",
   },
   reservedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Student",
-    required: false
+    type: String,
+    required: false,
+    default: null
   },
 });
 

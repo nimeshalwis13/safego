@@ -1,5 +1,7 @@
 const Seat = require("../Model/SeatModel");
 const Bus = require("../Model/BusModel");
+const Student = require("../Model/StudentModel");
+const Reservation = require("../Model/ReservationModel");
 
 // POST /api/seats -> create one seat
 const createSeat = async (req, res) => {
@@ -75,4 +77,107 @@ const generateSeatsForBus = async (req, res) => {
   }
 };
 
-module.exports = { createSeat, getSeatsByBus, generateSeatsForBus };
+// GET /api/seats/all-bookings → get all booked/pending seats with student details
+const getAllBookings = async (req, res) => {
+  try {
+    // Find all seats that are either Booked or Pending
+    const bookedSeats = await Seat.find({ 
+      status: { $in: ["Booked", "Pending"] },
+      reservedBy: { $ne: null }
+    }).sort({ busID: 1, seatNumber: 1 });
+
+    // Get student details for each booking
+    const bookingsWithDetails = await Promise.all(
+      bookedSeats.map(async (seat) => {
+        const student = await Student.findOne({ studentID: seat.reservedBy });
+        
+        return {
+          busID: seat.busID,
+          seatNumber: seat.seatNumber,
+          status: seat.status,
+          reservedBy: seat.reservedBy,
+          studentName: student ? student.name : 'Unknown',
+          studentType: student ? student.studentType : 'Unknown',
+          phone: student ? student.phone : null,
+          parentPhone: student ? student.parentPhone : null,
+          email: student ? student.email : null,
+          grade: student ? student.grade : null
+        };
+      })
+    );
+
+    res.json(bookingsWithDetails);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/seats/remove-booking → remove/cancel a booking (admin action)
+const removeBooking = async (req, res) => {
+  try {
+    const { busID, seatNumber } = req.body;
+
+    if (!busID || !seatNumber) {
+      return res.status(400).json({ error: "busID and seatNumber are required" });
+    }
+
+    // Find the seat
+    const seat = await Seat.findOne({ busID, seatNumber });
+    
+    if (!seat) {
+      return res.status(404).json({ error: "Seat not found" });
+    }
+
+    if (seat.status === "Available") {
+      return res.status(400).json({ error: "Seat is already available (not booked)" });
+    }
+
+    // Get student info before removing (for logging/response)
+    const studentID = seat.reservedBy;
+    const student = await Student.findOne({ studentID });
+
+    
+    // Find and cancel the active reservation for this seat
+    const activeReservation = await Reservation.findOne({
+      busID,
+      seatNumber,
+      studentID,
+      status: { $in: ["Booked", "Reserved", "Pending"] } // Any active status
+    }).sort({ createdAt: -1 }); // Get the most recent reservation
+
+    if (activeReservation) {
+      activeReservation.status = "Cancelled";
+      activeReservation.paymentStatus = "Failed"; // Mark payment as failed (admin removed)
+      await activeReservation.save();
+      
+      console.log(`✅ Reservation ${activeReservation.reservationID} cancelled by admin for student ${studentID}`);
+    } else {
+      console.warn(`⚠️ No active reservation found for Bus ${busID}, Seat ${seatNumber}, Student ${studentID}`);
+    }
+
+    // Release the seat - make it available
+    seat.status = "Available";
+    seat.reservedBy = null;
+    await seat.save();
+
+    res.json({
+      success: true,
+      message: `Booking removed successfully. Seat ${seatNumber} on bus ${busID} is now available.`,
+      releasedSeat: {
+        busID,
+        seatNumber,
+        previousStudent: studentID,
+        studentName: student ? student.name : 'Unknown'
+      },
+      reservationCancelled: activeReservation ? {
+        reservationID: activeReservation.reservationID,
+        status: "Cancelled"
+      } : null
+    });
+  } catch (err) {
+    console.error("Error removing booking:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { createSeat, getSeatsByBus, generateSeatsForBus, getAllBookings, removeBooking };

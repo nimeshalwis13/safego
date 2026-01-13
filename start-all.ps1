@@ -25,7 +25,7 @@ Start-Sleep -Seconds 5
 Start-ServiceInNewWindow -Title "Frontend (Student Interface)" -Directory "frontend" -Command "npm run dev"
 
 # Start Admin Dashboard
-Start-ServiceInNewWindow -Title "Admin Dashboard" -Directory "admin-dashboard\admin-dashboard" -Command "npm run dev"
+Start-ServiceInNewWindow -Title "Admin Dashboard" -Directory "admin-dashboard" -Command "npm run dev"
 
 Write-Host ""
 Write-Host "All services are starting..." -ForegroundColor Green

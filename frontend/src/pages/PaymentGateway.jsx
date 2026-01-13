@@ -50,13 +50,21 @@ const PaymentGateway = () => {
 
       const result = await response.json();
       
+      // 🔍 DEBUG: Log the API response
+      console.log("🔍 PaymentGateway - API Response:", result);
+      console.log("🔍 PaymentGateway - Reservation object:", result.reservation);
+      console.log("🔍 PaymentGateway - Reservation ID:", result.reservation?.reservationID);
+      
       if (response.ok) {
         toast.success("Payment Successful! Seat Booked!");
-        // Redirect to success page or back to seat map
+        // Redirect to success page with ALL necessary data
         navigate("/payment-success", { 
           state: { 
-            reservation: result,
-            busID: busID 
+            reservation: result.reservation,  // ✅ Pass the actual reservation object
+            busID: busID,
+            studentID: studentID,  // ✅ Pass studentID
+            studentType: studentType,  // ✅ Pass studentType
+            feeBreakdown: feeBreakdown  // ✅ Pass feeBreakdown
           }
         });
       } else {
@@ -90,8 +98,8 @@ const PaymentGateway = () => {
       
       if (response.ok) {
         toast.error("Payment Declined! Reservation Cancelled");
-        // Navigate back to seat reservation with the bus info
-        navigate("/seat-reservation", { 
+        // Navigate back to seat reservation with preserved studentID and studentType
+        navigate(`/seat-reservation?type=${studentType}&studentID=${studentID}`, { 
           state: { 
             message: "Payment was declined. Please try again.",
             returnToBus: true,
@@ -117,7 +125,8 @@ const PaymentGateway = () => {
   const handleCancelReservation = async () => {
     if (!reservation?._id) {
       toast.error("No reservation found");
-      navigate("/seat-reservation");
+      // Navigate back with preserved studentID and studentType
+      navigate(`/seat-reservation?type=${studentType}&studentID=${studentID}`);
       return;
     }
 
@@ -134,8 +143,8 @@ const PaymentGateway = () => {
       
       if (response.ok) {
         toast.success("Reservation cancelled successfully");
-        // Navigate back to seat reservation with the bus info
-        navigate("/seat-reservation", { 
+        // Navigate back to seat reservation with preserved studentID and studentType
+        navigate(`/seat-reservation?type=${studentType}&studentID=${studentID}`, { 
           state: { 
             message: "Reservation was cancelled. You can select another seat.",
             returnToBus: true,
@@ -148,14 +157,14 @@ const PaymentGateway = () => {
         });
       } else {
         toast.error(result.message || "Failed to cancel reservation");
-        // Still redirect back even if API fails
-        navigate("/seat-reservation");
+        // Still redirect back even if API fails, with preserved studentID
+        navigate(`/seat-reservation?type=${studentType}&studentID=${studentID}`);
       }
     } catch (error) {
       toast.error("Failed to cancel reservation");
       console.error(error);
-      // Still redirect back even if API fails
-      navigate("/seat-reservation");
+      // Still redirect back even if API fails, with preserved studentID
+      navigate(`/seat-reservation?type=${studentType}&studentID=${studentID}`);
     } finally {
       setProcessing(false);
     }

@@ -171,7 +171,7 @@ exports.updateBus = async (req, res) => {
   }
 };
 
-// Delete bus (soft delete)
+// Delete bus (soft delete) with seat cleanup
 exports.deleteBus = async (req, res) => {
   try {
     const { busID } = req.params;
@@ -181,10 +181,38 @@ exports.deleteBus = async (req, res) => {
       return res.status(404).json({ error: "Bus not found" });
     }
 
+    //  Check if bus has active reservations before deletion
+    const Reservation = require("../Model/ReservationModel");
+    const activeReservations = await Reservation.countDocuments({
+      busID: busID,
+      status: { $in: ["Booked", "Reserved", "Pending"] }
+    });
+
+    if (activeReservations > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete bus. ${activeReservations} active reservation(s) found. Please cancel all bookings first.`
+      });
+    }
+
+    //  Delete all seats associated with this bus
+    const seatsDeleted = await Seat.deleteMany({ busID: busID });
+    console.log(`🗑️ Deleted ${seatsDeleted.deletedCount} seats for bus ${busID}`);
+
+    //  Soft delete the bus
     bus.isActive = false;
     await bus.save();
 
-    res.json({ message: "Bus deleted successfully" });
+    //  Alternative: Hard delete (if preferred)
+    // await Bus.deleteOne({ busID });
+
+    res.json({ 
+      message: "Bus deleted successfully",
+      details: {
+        busID: busID,
+        seatsDeleted: seatsDeleted.deletedCount,
+        activeReservationsCancelled: 0
+      }
+    });
   } catch (error) {
     console.error("Error deleting bus:", error);
     res.status(500).json({ error: "Failed to delete bus" });

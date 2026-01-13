@@ -7,7 +7,7 @@ const FeeSummaryPage = () => {
   const navigate = useNavigate();
   
   // Get data from previous page
-  const { busID, seatNumber, studentType, studentID } = location.state || {};
+  const { busID, seatNumber, studentType, studentID, isRenewal } = location.state || {};
   
   const [days, setDays] = useState(1);
   const [paymentPlan, setPaymentPlan] = useState('monthly'); // For regular students: 'monthly' or 'annual'
@@ -37,16 +37,16 @@ const FeeSummaryPage = () => {
     if (studentType === "Regular") {
       // For regular students - two payment options
       if (paymentPlan === 'monthly') {
-        breakdown.registrationFee = 1000; // Registration fee for monthly plan
-        breakdown.monthlyFee = 3500;      // Monthly fee
+        breakdown.registrationFee = isRenewal ? 0 : 1000; // No registration fee for renewal
+        breakdown.monthlyFee = 4000;      // Monthly fee (updated from 3500 to 4000)
         breakdown.totalFee = breakdown.registrationFee + breakdown.monthlyFee;
-      } else if (paymentPlan === 'annual') {
-        breakdown.annualFee = 35000;      // Annual fee (no registration fee)
+      } else if (paymentPlan === 'sixMonth') {
+        breakdown.annualFee = 20000;      // 6-month fee (20000 for 6 months)
         breakdown.totalFee = breakdown.annualFee;
       }
     } else if (studentType === "Temporary") {
       // For temporary students
-      breakdown.dailyFee = 200;        // Daily charge
+      breakdown.dailyFee = 200;        // Daily charge (unchanged)
       breakdown.totalFee = breakdown.dailyFee * days;
     }
 
@@ -73,7 +73,7 @@ const FeeSummaryPage = () => {
 
       if (studentType === 'Regular') {
         // For regular students, only send seasonType - backend will calculate endDate and daysBooked
-        reservationData.seasonType = paymentPlan === 'monthly' ? 'Monthly' : 'Annual';
+        reservationData.seasonType = paymentPlan === 'monthly' ? 'Monthly' : 'SixMonth';
       } else if (studentType === 'Temporary') {
         // For temporary students, send custom endDate and daysBooked
         reservationData.endDate = new Date(Date.now() + (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
@@ -135,13 +135,18 @@ const FeeSummaryPage = () => {
 
   return (
     <div style={{ 
-      padding: "20px", 
-      maxWidth: "600px", 
-      margin: "0 auto", 
-      fontFamily: "Arial",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "flex-start",
+      minHeight: "100vh",
       backgroundColor: "#f8f9fa",
-      minHeight: "100vh"
+      padding: "20px"
     }}>
+      <div style={{ 
+        width: "100%",
+        maxWidth: "600px", 
+        fontFamily: "Arial"
+      }}>
       {/* Header */}
       <div style={{ 
         backgroundColor: "#007bff", 
@@ -206,33 +211,33 @@ const FeeSummaryPage = () => {
                 <strong>Monthly Plan</strong>
               </div>
               <p style={{ margin: "0", fontSize: "14px", color: "#666" }}>
-                Registration Fee: LKR 1,000<br/>
-                Monthly Fee: LKR 3,500<br/>
-                <strong>Total: LKR 4,500</strong>
+                {!isRenewal && <>Registration Fee: LKR 1,000<br/></>}
+                Monthly Fee: LKR 4,000<br/>
+                <strong>Total: LKR {isRenewal ? '4,000' : '5,000'}</strong>
               </p>
             </div>
 
-            {/* Annual Plan Option */}
+            {/* 6-Month Plan Option */}
             <div 
-              onClick={() => setPaymentPlan('annual')}
+              onClick={() => setPaymentPlan('sixMonth')}
               style={{
                 flex: 1,
                 padding: "15px",
-                border: `2px solid ${paymentPlan === 'annual' ? '#28a745' : '#e9ecef'}`,
+                border: `2px solid ${paymentPlan === 'sixMonth' ? '#28a745' : '#e9ecef'}`,
                 borderRadius: "8px",
                 cursor: "pointer",
-                backgroundColor: paymentPlan === 'annual' ? '#d4edda' : 'white',
+                backgroundColor: paymentPlan === 'sixMonth' ? '#d4edda' : 'white',
                 transition: "all 0.3s ease"
               }}
             >
               <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
                 <input 
                   type="radio" 
-                  checked={paymentPlan === 'annual'} 
-                  onChange={() => setPaymentPlan('annual')}
+                  checked={paymentPlan === 'sixMonth'} 
+                  onChange={() => setPaymentPlan('sixMonth')}
                   style={{ marginRight: "8px" }}
                 />
-                <strong>Annual Plan</strong>
+                <strong>6-Month Plan</strong>
                 <span style={{ 
                   marginLeft: "auto", 
                   backgroundColor: "#28a745", 
@@ -241,13 +246,13 @@ const FeeSummaryPage = () => {
                   borderRadius: "3px", 
                   fontSize: "10px" 
                 }}>
-                  SAVE LKR 19,000
+                  SAVE LKR 10,000
                 </span>
               </div>
               <p style={{ margin: "0", fontSize: "14px", color: "#666" }}>
                 No Registration Fee<br/>
-                Annual Fee: LKR 35,000<br/>
-                <strong>Total: LKR 35,000</strong>
+                6-Month Fee: LKR 20,000<br/>
+                <strong>Total: LKR 20,000</strong>
               </p>
             </div>
           </div>
@@ -258,7 +263,7 @@ const FeeSummaryPage = () => {
             fontSize: "12px",
             color: "#856404"
           }}>
-            💡 <strong>Annual Plan saves you LKR 19,000</strong> compared to 12 months of monthly payments (12 × 4,500 = 54,000)
+            💡 <strong>6-Month Plan saves you LKR 5,000</strong> compared to 6 months of monthly payments (6 × 4,000)+1000 = 25,000)
           </div>
         </div>
       )}
@@ -322,10 +327,12 @@ const FeeSummaryPage = () => {
           <div>
             {paymentPlan === 'monthly' ? (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <span>Registration Fee:</span>
-                  <span>LKR {feeBreakdown.registrationFee.toFixed(2)}</span>
-                </div>
+                {feeBreakdown.registrationFee > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <span>Registration Fee:</span>
+                    <span>LKR {feeBreakdown.registrationFee.toFixed(2)}</span>
+                  </div>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
                   <span>Monthly Fee:</span>
                   <span>LKR {feeBreakdown.monthlyFee.toFixed(2)}</span>
@@ -353,7 +360,7 @@ const FeeSummaryPage = () => {
                   <span style={{ color: "#28a745" }}>FREE</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <span>Annual Fee:</span>
+                  <span>6-Month Fee:</span>
                   <span>LKR {feeBreakdown.annualFee.toFixed(2)}</span>
                 </div>
                 <hr style={{ margin: "15px 0" }} />
@@ -369,8 +376,8 @@ const FeeSummaryPage = () => {
                   fontSize: "14px",
                   color: "#155724"
                 }}>
-                  ℹ️ This covers your entire year of bus service with no registration fee!<br/>
-                  <strong>💰 You save LKR 19,000 compared to monthly payments</strong>
+                  ℹ️ This covers 6 months of bus service with no registration fee!<br/>
+                  <strong>💰 You save LKR 5,000 compared to 6 monthly payments</strong>
                 </div>
               </>
             )}
@@ -450,20 +457,21 @@ const FeeSummaryPage = () => {
             {loading ? "Creating Reservation..." : "Continue to Payment Gateway →"}
           </button>
         </div>
-      </div>
+        </div>
 
-      {/* Info Notice */}
-      <div style={{ 
-        backgroundColor: "#fff3cd", 
-        border: "1px solid #ffeaa7",
-        padding: "15px", 
-        borderRadius: "5px",
-        marginTop: "20px",
-        textAlign: "center"
-      }}>
-        <p style={{ margin: 0, fontSize: "14px" }}>
-          📋 Please review all details before proceeding to payment
-        </p>
+        {/* Info Notice */}
+        <div style={{ 
+          backgroundColor: "#fff3cd", 
+          border: "1px solid #ffeaa7",
+          padding: "15px", 
+          borderRadius: "5px",
+          marginTop: "20px",
+          textAlign: "center"
+        }}>
+          <p style={{ margin: 0, fontSize: "14px" }}>
+            📋 Please review all details before proceeding to payment
+          </p>
+        </div>
       </div>
     </div>
   );

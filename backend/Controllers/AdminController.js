@@ -1,4 +1,6 @@
 const Admin = require("../Model/AdminModel");
+const Counter = require("../Model/CounterModel");
+const Student = require("../Model/StudentModel");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
@@ -7,7 +9,22 @@ const JWT_SECRET = process.env.JWT_SECRET || "safego-admin-secret-key-2025";
 // REGISTER NEW ADMIN
 const registerAdmin = async (req, res) => {
   try {
-    const { username, email, password, fullName, role } = req.body;
+    const { username, email, password, fullName } = req.body;
+
+    // Validate password strength
+    if (!password || password.length < 6) {
+      return res.status(400).json({ 
+        error: "Password must be at least 6 characters long" 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        error: "Please provide a valid email address" 
+      });
+    }
 
     // Check if admin already exists
     const existingAdmin = await Admin.findOne({
@@ -29,8 +46,7 @@ const registerAdmin = async (req, res) => {
       username,
       email,
       password: hashedPassword,
-      fullName,
-      role: role || "admin"
+      fullName
     });
 
     await newAdmin.save();
@@ -79,8 +95,7 @@ const loginAdmin = async (req, res) => {
     const token = jwt.sign(
       { 
         adminId: admin._id, 
-        username: admin.username,
-        role: admin.role 
+        username: admin.username
       },
       JWT_SECRET,
       { expiresIn: "24h" }
@@ -151,10 +166,67 @@ const updateAdminStatus = async (req, res) => {
   }
 };
 
+// RESET STUDENT ID COUNTER
+const resetStudentCounter = async (req, res) => {
+  try {
+    // Check if there are any students in the database
+    const studentCount = await Student.countDocuments();
+    
+    if (studentCount > 0) {
+      return res.status(400).json({ 
+        error: "Cannot reset counter while students exist in database",
+        message: "Please delete all students first before resetting the counter",
+        currentStudentCount: studentCount
+      });
+    }
+
+    // Reset the counter to 0
+    await Counter.findByIdAndUpdate(
+      { _id: "studentID" },
+      { sequenceValue: 0 },
+      { upsert: true }
+    );
+
+    res.json({
+      message: "Student ID counter has been reset successfully",
+      info: "Next student will receive ID: SGS0001"
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET STUDENT COUNTER STATUS
+const getStudentCounterStatus = async (req, res) => {
+  try {
+    const counter = await Counter.findById("studentID");
+    const studentCount = await Student.countDocuments();
+    
+    let nextStudentID = "SGS0001";
+    if (counter && counter.sequenceValue > 0) {
+      const nextNumber = (counter.sequenceValue + 1).toString().padStart(4, '0');
+      nextStudentID = `SGS${nextNumber}`;
+    }
+
+    res.json({
+      currentCounter: counter ? counter.sequenceValue : 0,
+      totalStudents: studentCount,
+      nextStudentID: nextStudentID,
+      canReset: studentCount === 0
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   registerAdmin,
   loginAdmin,
   getAdminProfile,
   getAllAdmins,
-  updateAdminStatus
+  updateAdminStatus,
+  resetStudentCounter,
+  getStudentCounterStatus
 };

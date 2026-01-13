@@ -1,0 +1,74 @@
+.navbar {
+  background-color: #343a40;
+  padding: 15px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar-logo {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navbar-logo::before {
+  content: "🚌";
+  font-size: 28px;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 20px;
+}
+
+.navbar-button {
+  padding: 10px 20px;
+  background-color: transparent;
+  color: white;
+  border: 1px solid #6c757d;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.navbar-button:hover {
+  background-color: #495057;
+  transform: translateY(-1px);
+}
+
+.navbar-button.active {
+  background-color: #007bff;
+  border: none;
+}
+
+.navbar-button.active:hover {
+  background-color: #0056b3;
+}
+
+@media (max-width: 768px) {
+  .navbar-container {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .navbar-links {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .navbar-button {
+    width: 100%;
+  }
+}

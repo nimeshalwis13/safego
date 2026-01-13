@@ -34,6 +34,12 @@ const studentSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  studentType: {
+    type: String,
+    enum: ["Regular", "Temporary"],
+    required: true,
+    default: "Regular"
+  },
   parentName: {
     type: String,
     required: true,
@@ -48,6 +54,11 @@ const studentSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 6
   },
   status: {
     type: String,

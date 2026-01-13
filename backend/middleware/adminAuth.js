@@ -16,7 +16,7 @@ const authenticateAdmin = async (req, res, next) => {
 
     console.log("Auth middleware - Token found, verifying...");
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log("Auth middleware - Token decoded:", { adminId: decoded.adminId, role: decoded.role });
+    console.log("Auth middleware - Token decoded:", { adminId: decoded.adminId });
     
     // Check if admin still exists and is active
     const admin = await Admin.findById(decoded.adminId);
@@ -27,7 +27,6 @@ const authenticateAdmin = async (req, res, next) => {
 
     console.log("Auth middleware - Admin authenticated:", admin.username);
     req.adminId = decoded.adminId;
-    req.adminRole = decoded.role;
     req.admin = admin; // Add the full admin object for easy access
     next();
   } catch (err) {
@@ -36,11 +35,10 @@ const authenticateAdmin = async (req, res, next) => {
   }
 };
 
-// Check if admin is super-admin
+// Check if admin is authenticated (all admins have same permissions now)
 const requireSuperAdmin = (req, res, next) => {
-  if (req.adminRole !== "super-admin") {
-    return res.status(403).json({ error: "Access denied. Super admin role required." });
-  }
+  // Since we removed roles, all authenticated admins have full access
+  // This middleware is kept for backward compatibility but just passes through
   next();
 };
 
